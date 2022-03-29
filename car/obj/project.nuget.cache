@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "B5OutQsJ9q9Ip5gs8Jy0qFfXnkTyPe0AYxRqo+fxQq1MdEJXdtBzKtPXRpw7iTFnJ5mFoDbxwefTkDgmYgWvAA==",
+  "success": true,
+  "projectFilePath": "/home/henryw/Documents/Projects/get-programming-fsharp/src/code-listings/lesson-08/Program.fsproj",
+  "expectedPackageFiles": [
+    "/home/henryw/.nuget/packages/fsharp.core/6.0.1/fsharp.core.6.0.1.nupkg.sha512",
+    "/home/henryw/.nuget/packages/microsoft.aspnetcore.app.ref/6.0.2/microsoft.aspnetcore.app.ref.6.0.2.nupkg.sha512"
+  ],
+  "logs": []
+}
