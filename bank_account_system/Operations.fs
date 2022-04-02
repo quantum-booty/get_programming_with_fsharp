@@ -1,49 +1,64 @@
-namespace Bank
+module Capstone4.Operations
 
 open System
-open Bank.Domain
+open Capstone4.Domain
 
-module Operations =
+let classifyAccount account =
+    if account.Balance >= 0M then
+        (InCredit(CreditAccount account))
+    else
+        Overdrawn account
 
-    let deposit amount account =
-        { account with Account.Balance = account.Balance + amount }
+/// Withdraws an amount of an account
+let withdraw amount account =
+    { account with Balance = account.Balance - amount }
+    |> classifyAccount
 
-    let withdraw amount account =
-        if account.Balance < amount then
-            account
-        else
-            { account with Account.Balance = account.Balance - amount }
+let withdrawSafe amount ratedAccount =
+    match ratedAccount  with
+    | InCredit(CreditAccount account) -> account |> withdraw amount
+    | Overdrawn _ ->
+        printfn "Your account is overdrawn - withdrawal rejected"
+        ratedAccount
 
-    let auditAs operationName audit operation amount account =
-        let createTransaction accepted =
-            { Operation = operationName
-              Timestamp = DateTime.UtcNow
-              Amount = amount
-              Accepted = accepted }
 
-        let updatedAccount = operation amount account
+/// Deposits an amount into an account
+let deposit amount account =
+    let account =
+        match account with
+        | InCredit (CreditAccount account) -> account
+        | Overdrawn account -> account
 
-        let accountIsUnchanged = (updatedAccount = account)
+    { account with Balance = account.Balance + amount }
+    |> classifyAccount
 
-        if accountIsUnchanged then
-            audit account.Id account.Owner.Name (createTransaction false)
-        else
-            audit account.Id account.Owner.Name (createTransaction true)
+/// Runs some account operation such as withdraw or deposit with auditing.
+let auditAs operationType audit operation amount (account: RatedAccount) =
+    let updatedAccount = operation amount account
 
-        updatedAccount
+    let accountIsUnchanged = (updatedAccount = account)
 
-    let loadAccount (accountId, owner, transactions) =
-        let openingAccount =
-            { Id = accountId
-              Owner = { Name = owner }
-              Balance = 0M }
+    let transaction =
+        { Operation = operationType
+          Amount = amount
+          Timestamp = DateTime.UtcNow }
 
-        let action account transaction =
-            match transaction.Operation with
-            | "d" -> deposit transaction.Amount account
-            | "w" -> withdraw transaction.Amount account
-            | _ -> account
+    audit (account.GetField(fun a -> a.AccountId)) (account.GetField(fun a -> a.Owner).Name) transaction
+    updatedAccount
 
-        transactions
-        |> Seq.sortBy (fun txn -> txn.Timestamp)
-        |> Seq.fold action openingAccount
+/// Creates an account from a historical set of transactions
+let loadAccount (owner, accountId, transactions) =
+    let openingAccount =
+        { AccountId = accountId
+          Balance = 0M
+          Owner = { Name = owner } }
+        |> classifyAccount
+
+    transactions
+    |> Seq.sortBy (fun txn -> txn.Timestamp)
+    |> Seq.fold
+        (fun account txn ->
+            match txn.Operation with
+            | Withdraw -> account |> withdrawSafe txn.Amount
+            | Deposit -> account |> deposit txn.Amount)
+        openingAccount

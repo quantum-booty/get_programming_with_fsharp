@@ -1,19 +1,22 @@
-namespace Bank
+module Capstone4.Auditing
 
-open Bank.Domain
-open Bank.FileRepository
+open Capstone4.Operations
+open Capstone4.Domain
 
-module Auditing =
-    /// Logs to the console
-    let printTransaction accountId _ (transaction: Transaction) =
-        printfn "Account %O: %s" accountId (serialized transaction)
+/// Logs to the console
+let printTransaction _ accountId transaction =
+    printfn
+        "Account %O: %A of %M"
+        accountId
+        transaction.Operation
+        transaction.Amount
 
-    // Logs to both console and file system
-    let composedLogger =
-        let loggers =
-            [ FileRepository.writeTransaction
-              printTransaction ]
+// Logs to both console and file system
+let composedLogger =
+    let loggers =
+        [ FileRepository.writeTransaction
+          printTransaction ]
 
-        fun accountId owner message ->
-            loggers
-            |> List.iter (fun logger -> logger accountId owner message)
+    fun accountId owner transaction ->
+        loggers
+        |> List.iter (fun logger -> logger accountId owner transaction)

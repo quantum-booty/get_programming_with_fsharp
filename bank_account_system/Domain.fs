@@ -1,30 +1,48 @@
-namespace Bank.Domain
+namespace Capstone4.Domain
 
 open System
+
+type BankOperation =
+    | Deposit
+    | Withdraw
 
 type Customer = { Name: string }
 
 type Account =
-    { Id: System.Guid
+    { AccountId: Guid
       Owner: Customer
       Balance: decimal }
 
-[<AutoOpen>]
+type CreditAccount = CreditAccount of Account
+
+type RatedAccount =
+    | InCredit of CreditAccount
+    | Overdrawn of Account
+    member this.GetField getter =
+        match this with
+        | InCredit (CreditAccount account) -> getter account
+        | Overdrawn account -> getter account
+
+type Transaction =
+    { Timestamp: DateTime
+      Operation: BankOperation
+      Amount: decimal }
+
 module Transactions =
-    type Transaction =
-        { Operation: string
-          Timestamp: DateTime
-          Amount: decimal
-          Accepted: bool }
+    /// Serializes a transaction
+    let serialize transaction =
+        sprintf "%O***%O***%M" transaction.Timestamp transaction.Operation transaction.Amount
 
-    let serialized (transaction: Transaction) =
-        sprintf "%O***%s***%M***%b" transaction.Timestamp transaction.Operation transaction.Amount transaction.Accepted
+    /// Deserializes a transaction
+    let deserialize (fileContents: string) =
+        let parts = fileContents.Split([| "***" |], StringSplitOptions.None)
 
-    let deserialize (transactionStr: string) =
-        match transactionStr.Split("***", StringSplitOptions.None) with
-        | [| a; b; c; d |] ->
-            { Timestamp = DateTime.Parse a
-              Operation = b
-              Amount = Decimal.Parse c
-              Accepted = bool.Parse d }
-        | _ -> failwith $"unrecognised transaction format {transactionStr}"
+        let op =
+            match parts.[1] with
+            | "Withdraw" -> Withdraw
+            | "Deposit" -> Deposit
+            | _ -> failwith "Unrecognised command"
+
+        { Timestamp = DateTime.Parse parts.[0]
+          Operation = op
+          Amount = Decimal.Parse parts.[2] }

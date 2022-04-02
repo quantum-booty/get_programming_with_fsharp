@@ -1,62 +1,96 @@
-open System
-open Bank.Auditing
-open Bank.Domain
-open Bank.Operations
-open Bank.FileRepository
+module Capstone4.Program
 
-let withdrawWithAudit = auditAs "w" composedLogger withdraw
-let depositWithAudit = auditAs "d" composedLogger deposit
-let loadAccountFromDisk = findTransactionsOnDisk >> loadAccount
+open System
+open Capstone4.Domain
+open Capstone4.Operations
+
+let withdrawWithAudit = auditAs Withdraw Auditing.composedLogger withdrawSafe
+let depositWithAudit = auditAs Deposit Auditing.composedLogger deposit
+
+let tryLoadAccountFromDisk =
+    FileRepository.findTransactionsOnDisk
+    >> Option.map Operations.loadAccount
+
+type Command =
+    | AccountCommand of BankOperation
+    | Exit
+
+let tryGetBankOperation cmd =
+    match cmd with
+    | AccountCommand op -> Some op
+    | Exit -> None
+
 
 [<AutoOpen>]
 module CommandParsing =
-    let isValidCommand command =
-        [ "d"; "w"; "x" ] |> List.contains command
+    let tryParseCommand x =
+        match x with
+        | 'w' -> Some(AccountCommand Withdraw)
+        | 'd' -> Some(AccountCommand Deposit)
+        | 'x' -> Some Exit
+        | _ -> None
 
-    let isStopCommand command =
-        match command with
-        | "x" -> true
-        | _ -> false
+    let isStopCommand command = command = Exit
 
 [<AutoOpen>]
 module UserInput =
-    let getAmount command =
-        Console.Write "Enter Amount: "
-        (command, Console.ReadLine() |> Decimal.Parse)
-
     let commands =
         seq {
             while true do
-                Console.WriteLine()
                 Console.Write "(d)eposit, (w)ithdraw or e(x)it: "
-                yield Console.ReadLine()
-
+                yield Console.ReadKey().KeyChar
+                Console.WriteLine()
         }
 
-let accountBalanceLogger account =
-    printfn "Account %O: current balance %M" account.Id account.Balance
+    let getAmount command =
+        Console.WriteLine()
+        Console.Write "Enter Amount: "
+        let amount = Console.ReadLine() |> Decimal.TryParse
 
-let processCommand account (command, amount) =
-    accountBalanceLogger account
+        match amount with
+        | true, amount -> Some(command, amount)
+        | false, _ -> None
 
-    match command with
-    | "d" -> depositWithAudit amount account
-    | "w" -> withdrawWithAudit amount account
-    | _ -> account
 
 [<EntryPoint>]
-let main argv =
+let main _ =
     let openingAccount =
-        Console.Write "What is your name?"
-        Console.ReadLine() |> loadAccountFromDisk
+        Console.Write "Please enter your name: "
+        let owner = Console.ReadLine()
 
-    accountBalanceLogger openingAccount
+        match (tryLoadAccountFromDisk owner) with
+        | Some account -> account
+        | None ->
+            let account =
+                { Balance = 0M
+                  AccountId = Guid.NewGuid()
+                  Owner = { Name = owner } }
 
-    commands
-    |> Seq.filter isValidCommand
-    |> Seq.takeWhile (not << isStopCommand)
-    |> Seq.map getAmount
-    |> Seq.fold processCommand openingAccount
-    |> ignore
+            InCredit(CreditAccount account)
+
+    printfn "Current balance is £%M" (openingAccount.GetField(fun a -> a.Balance))
+
+    let processCommand account (command, amount) =
+        printfn ""
+
+        let account =
+            match command with
+            | Deposit -> account |> depositWithAudit amount
+            | Withdraw -> account |> withdrawWithAudit amount
+
+        printfn "Current balance is £%M" (account.GetField(fun a -> a.Balance))
+        account
+
+    let closingAccount =
+        commands
+        |> Seq.choose tryParseCommand
+        |> Seq.takeWhile (not << isStopCommand)
+        |> Seq.choose tryGetBankOperation
+        |> Seq.choose getAmount
+        |> Seq.fold processCommand openingAccount
+
+    printfn ""
+    printfn "Closing Balance:\r\n %A" closingAccount
+    Console.ReadKey() |> ignore
 
     0
